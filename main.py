@@ -1,13 +1,19 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, HttpUrl
-from youtube_summarizer import YouTubeSummarizer, SummaryType
+from app.youtube_summarizer.youtube_summarizer import YouTubeSummarizer, SummaryType
 from dotenv import load_dotenv
+from app.email_sender.scheduler import SummaryScheduler
+from app.email_sender.email_service import EmailService
 
 # Load environment variables at startup
 load_dotenv()
 
 app = FastAPI()
 summarizer = YouTubeSummarizer()
+
+# Initialize scheduler
+scheduler = SummaryScheduler()
+email_service = EmailService()
 
 class SummaryRequest(BaseModel):
     url: HttpUrl
@@ -32,3 +38,16 @@ async def summarize_crypto(request: SummaryRequest):
         return await summarizer.summarize_video(str(request.url), "crypto")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.on_event("startup")
+async def start_scheduler():
+    scheduler.start()
+
+@app.post("/test-email")
+async def test_email():
+    """Endpoint to test email sending with current summaries"""
+    try:
+        await scheduler.send_daily_summaries()
+        return {"message": "Test email sent successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
